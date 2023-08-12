@@ -1,0 +1,88 @@
+# version: "3"
+
+# # More info at https://github.com/pi-hole/docker-pi-hole/ and https://docs.pi-hole.net/
+# services:
+#   pihole:
+#     container_name: pihole
+#     image: pihole/pihole:latest
+#     # For DHCP it is recommended to remove these ports and instead add: network_mode: "host"
+#     ports:
+#       - "53:53/tcp"
+#       - "53:53/udp"
+#       - "8080:80/tcp"
+#     environment:
+#       TZ: 'Asia/Kolkata'
+#       WEBPASSWORD: 'password'
+#     # Volumes store your data between container upgrades
+#     volumes:
+#       - './etc-pihole:/etc/pihole'
+#       - './etc-dnsmasq.d:/etc/dnsmasq.d'
+#     #   https://github.com/pi-hole/docker-pi-hole#note-on-capabilities
+#     restart: unless-stopped
+
+# version: "3.7"
+# services:
+#   caddy:
+#     image: lucaslorentz/caddy-docker-proxy:ci-alpine
+#     ports:
+#       - 80:80
+#       # - 443:443
+#     environment:
+#       - CADDY_INGRESS_NETWORKS=caddy
+#     networks:
+#       - caddy
+#     volumes:
+#       - /var/run/docker.sock:/var/run/docker.sock
+#       - caddy_data:/data
+#     restart: unless-stopped
+#   pihole:
+#     container_name: pihole
+#     networks:
+#       - caddy
+#     image: pihole/pihole:latest
+#     # For DHCP it is recommended to remove these ports and instead add: network_mode: "host"
+#     environment:
+#       TZ: 'Asia/Kolkata'
+#       WEBPASSWORD: 'password'
+#     labels:
+#       caddy: whoami.pi.hole
+#       caddy.reverse_proxy: "{{upstreams 80}}"
+#     # Volumes store your data between container upgrades
+#     volumes:
+#       - './etc-pihole:/etc/pihole'
+#       - './etc-dnsmasq.d:/etc/dnsmasq.d'
+#     #   https://github.com/pi-hole/docker-pi-hole#note-on-capabilities
+#     restart: unless-stopped
+
+# networks:
+#   caddy:
+#     external: true
+
+# volumes:
+#   caddy_data: {}
+
+version: "3.9"
+
+services:
+  traefik:
+    image: "traefik:v2.10"
+    container_name: "traefik"
+    command:
+      #- "--log.level=DEBUG"
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+    ports:
+      - "80:80"
+      - "8080:8080"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+
+  whoami:
+    image: "traefik/whoami"
+    container_name: "simple-service"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.whoami.rule=Host(`whoami.localhost`)"
+      - "traefik.http.routers.whoami.entrypoints=web"

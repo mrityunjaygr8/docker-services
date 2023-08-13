@@ -5,6 +5,7 @@ services:
     image: "traefik:v2.10"
     container_name: "traefik"
     command:
+      - "--providers.docker.network=default"
       - "--log.level=DEBUG"
       - "--api.insecure=true"
       - '--api.dashboard=true'
@@ -12,16 +13,32 @@ services:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.r53.acme.dnschallenge.provider=route53"
+      - "--certificatesresolvers.r53.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53"
+      # - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      # - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
     labels:
-      - 'traefik.http.routers.traefik.rule=Host(`traefik.stratin.in`)'
+      - 'traefik.http.routers.traefik.rule=Host(`traefik.parham.in`) && (PathPrefix(`/api`) || PathPrefix(`/dashboard`))"'
       - 'traefik.http.routers.traefik.service=api@internal'
-      - 'traefik.http.routers.traefik.entrypoints=websecure'
+      - 'traefik.http.routers.traefik.entrypoints=web'
+      # - 'traefik.http.routers.traefik.entrypoints=websecure'
       - 'traefik.http.services.traefik.loadBalancer.server.port=8080'
+      # - "traefik.http.routers.traefik.tls.certresolver=r53"
+      # - "traefik.http.routers.traefik.tls=true"
+    env_file:
+      - .env
+    environment:
+      - AWS_ACCESS_KEY_ID=${ACCESS_KEY}
+      - AWS_SECRET_ACCESS_KEY=${SECRET_KEY}
+      - AWS_HOSTED_ZONE_ID=${HOSTED_ZONE}
     ports:
       - "80:80"
+      - "443:443"
       - "8080:8080"
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - "./letsencrypt:/letsencrypt"
     restart: unless-stopped
 
   whoami:
@@ -29,8 +46,11 @@ services:
     container_name: "whoami"
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.whoami.rule=Host(`whoami.stratin.in`)"
+      - "traefik.http.routers.whoami.rule=Host(`whoami.parham.in`)"
       - "traefik.http.routers.whoami.entrypoints=web"
+      # - "traefik.http.routers.whoami.entrypoints=websecure"
+      # - "traefik.http.routers.whoami.tls.certresolver=r53"
+      # - "traefik.http.routers.whoami.tls=true"
     restart: unless-stopped
   pihole:
     container_name: pihole
@@ -50,10 +70,13 @@ services:
     restart: unless-stopped
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.pihole.rule=Host(`pihole.stratin.in`)"
+      - "traefik.http.routers.pihole.rule=Host(`pihole.parham.in`)"
+      # - "traefik.http.routers.pihole.entrypoints=websecure"
       - "traefik.http.routers.pihole.entrypoints=web"
       - 'traefik.http.middlewares.pihole.addprefix.prefix=/admin'
       - 'traefik.http.services.pihole.loadBalancer.server.port=80'
+      # - "traefik.http.routers.pihole.tls.certresolver=r53"
+      # - "traefik.http.routers.pihole.tls=true"
   ptagent:
     image: portainer/agent:2.18.4
     volumes:
@@ -65,11 +88,51 @@ services:
     command: -H tcp://ptagent:9001 --tlsskipverify --http-enabled
     labels:
       - 'traefik.enable=true'
-      - 'traefik.http.routers.portainer.rule=Host(`portainer.stratin.in`)'
+      - 'traefik.http.routers.portainer.rule=Host(`portainer.parham.in`)'
       - 'traefik.http.services.portainer.loadbalancer.server.port=9000'
+      # - 'traefik.http.routers.portainer.entrypoints=websecure'
       - 'traefik.http.routers.portainer.entrypoints=web'
+      # - "traefik.http.routers.portainer.tls.certresolver=r53"
+      # - "traefik.http.routers.portainer.tls=true"
     volumes:
       - portainer_data:/data
     restart: unless-stopped
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    networks:
+      ipvlan:
+        ipv4_address: 192.168.1.200
+      default: {}
+    ports:
+      - 7359:7359/udp
+      - 1900:1900/udp
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Kolkata
+      - JELLYFIN_PublishedServerUrl=https://jellyfin.parham.in
+    volumes:
+      - /mnt/library/jellyfin:/config
+      - /mnt/library/Movies:/data/movies
+      - /mnt/library/TV:/data/tv
+    restart: 'unless-stopped'
+    labels:
+      - 'traefik.enable=true'
+      - 'traefik.http.routers.jellyfin.rule=Host(`jellyfin.parham.in`)'
+      - 'traefik.http.routers.jellyfin.entrypoints=web'
+      # - 'traefik.http.routers.jellyfin.entrypoints=websecure'
+      - 'traefik.http.services.jellyfin.loadbalancer.server.port=8096'
+      # - "traefik.http.routers.jellyfin.tls.certresolver=r53"
+      # - "traefik.http.routers.jellyfin.tls=true"
 volumes:
   portainer_data: {}
+
+networks:
+  ipvlan:
+    driver: ipvlan
+    driver_opts:
+      parent: eno1 # replace with your host interface / vlan to use
+    ipam:
+      config:
+        - subnet: 192.168.1.0/24

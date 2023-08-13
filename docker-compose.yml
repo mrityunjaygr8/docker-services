@@ -5,7 +5,7 @@ services:
     image: "traefik:v2.10"
     container_name: "traefik"
     command:
-      #- "--log.level=DEBUG"
+      - "--log.level=DEBUG"
       - "--api.insecure=true"
       - '--api.dashboard=true'
       - '--api.debug=true'
@@ -15,20 +15,23 @@ services:
     labels:
       - 'traefik.http.routers.traefik.rule=Host(`traefik.stratin.in`)'
       - 'traefik.http.routers.traefik.service=api@internal'
-      - 'traefik.http.middlewares.traefik.entrypoints=web'
+      - 'traefik.http.routers.traefik.entrypoints=websecure'
+      - 'traefik.http.services.traefik.loadBalancer.server.port=8080'
     ports:
       - "80:80"
       - "8080:8080"
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    restart: unless-stopped
 
   whoami:
     image: "traefik/whoami"
-    container_name: "simple-service"
+    container_name: "whoami"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.whoami.rule=Host(`whoami.stratin.in`)"
       - "traefik.http.routers.whoami.entrypoints=web"
+    restart: unless-stopped
   pihole:
     container_name: pihole
     image: pihole/pihole:latest

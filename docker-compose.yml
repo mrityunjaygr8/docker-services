@@ -125,6 +125,28 @@ services:
       - 'traefik.http.services.jellyfin.loadbalancer.server.port=8096'
       # - "traefik.http.routers.jellyfin.tls.certresolver=r53"
       # - "traefik.http.routers.jellyfin.tls=true"
+  transmission:
+    image: lscr.io/linuxserver/transmission:latest
+    container_name: transmission
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Asia/Kolkata
+      - DOCKER_MODS=linuxserver/mods:transmission-floodui
+    volumes:
+      - /mnt/library:/downloads
+    ports:
+      - 51413:51413
+      - 51413:51413/udp
+    restart: unless-stopped
+    labels:
+      - 'traefik.enable=true'
+      - 'traefik.http.routers.transmission.rule=Host(`transmission.parham.in`)'
+      - 'traefik.http.routers.transmission.entrypoints=web'
+      # - 'traefik.http.routers.transmission.entrypoints=websecure'
+      - 'traefik.http.services.transmission.loadbalancer.server.port=9091'
+      # - "traefik.http.routers.transmission.tls.certresolver=r53"
+      # - "traefik.http.routers.transmission.tls=true"
 volumes:
   portainer_data: {}
 

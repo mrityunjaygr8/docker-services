@@ -1,0 +1,93 @@
+version: "3"
+
+# More info at https://github.com/pi-hole/docker-pi-hole/ and https://docs.pi-hole.net/
+services:
+  pihole:
+    container_name: pihole
+    networks:
+      - traefik_default
+    image: pihole/pihole:latest
+    # For DHCP it is recommended to remove these ports and instead add: network_mode: "host"
+    environment:
+      TZ: 'Asia/Calcutta'
+      WEBPASSWORD: 'dr0w.Ssap'
+    # Volumes store your data between container upgrades
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.pihole.service=pihole"
+      - "traefik.http.routers.pihole.entrypoints=websecure"
+      - "traefik.http.routers.pihole.rule=Host(`pihole.stratin.in`)"
+      - "traefik.http.routers.middlewares=pihole-admin"
+      - "traefik.http.middlewares.pihole-admin.addprefix.prefix=/admin"
+      - "traefik.http.services.pihole.loadBalancer.server.port=80"
+      - "traefik.http.routers.pihole.tls.certresolver=r53"
+      - "traefik.http.routers.pihole.tls=true"
+
+      # Normal DNS coming in on 53 TCP, no TLS
+      - "traefik.tcp.routers.dns.entrypoints=dns"
+      - "traefik.tcp.routers.dns.service=pihole"
+
+      # recieves traffic from both the TLS and non-TLS traefik routers
+      - "traefik.tcp.services.pihole.loadbalancer.server.port=53"
+
+      # Normal DNS coming in on 53 UDP
+      - "traefik.udp.routers.udpdns.entrypoints=udpdns"
+      - "traefik.udp.routers.udpdns.service=pihole"
+      - "traefik.udp.services.pihole.loadbalancer.server.port=53"
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    volumes:
+      - './etc-pihole:/etc/pihole'
+      - './etc-dnsmasq.d:/etc/dnsmasq.d'
+    restart: unless-stopped
+
+  reverse-proxy:
+    container_name: traefik
+    networks:
+      - traefik_default
+    # The official v2 Traefik docker image
+    image: traefik:v2.9
+    environment:
+      - AWS_ACCESS_KEY_ID: "${ACCESS_KEY}"
+      - AWS_SECRET_ACCESS_KEY: "${SECRET_KEY}"
+      - AWS_HOSTED_ZONE_ID: "${HOSTED_ZONE}"
+    # Enables the web UI and tells Traefik to listen to docker
+    command: 
+      - "--api.insecure=true"
+      - "--providers.docker"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.dns.address=:53"
+      - "--entrypoints.udpdns.address=:53/udp"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entrypoint.scheme=https"
+      - "--certificatesresolvers.r53.acme.dnschallenge.provider=route53"
+      - "--certificatesresolvers.r53.acme.dnschallenge.resolvers=1.1.1.1:53,8.8.8.8:53"
+    ports:
+      # The HTTP port
+      - "80:80"
+      - "443:443"
+      - "53:53/tcp"
+      - "53:53/udp"
+      - "853:853/udp"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.api.tls.certresolver=r53"
+      - "traefik.http.routers.api.tls=true"
+      - "traefik.http.routers.api.rule=Host(`traefik.stratin.in`) && (PathPrefix(`/api`) || PathPrefix(`/`))"
+      - "traefik.http.routers.api.service=api@internal"
+      - "traefik.http.routers.api.entrypoints=websecure"
+    restart: unless-stopped
+
+    volumes:
+      # So that Traefik can listen to the Docker events
+      - "letsencrypt:/letsencrypt"
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+
+networks:
+  traefik_default:
+    external: true
+
+volumes:
+  letsencrypt:

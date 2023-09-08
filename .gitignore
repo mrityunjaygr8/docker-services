@@ -2,3 +2,4 @@ etc-dnsmasq.d
 etc-pihole
 .env
 letsencrypt
+torrent/data
